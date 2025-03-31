@@ -7,4 +7,9 @@ public class DoctorHub : Hub
     {
         await Clients.All.SendAsync("UpdateDoctorAvailability", doctorId, isAvailable);
     }
+
+    public async Task NotifyDoctorAdded(object doctor)
+    {
+        await Clients.All.SendAsync("DoctorAdded", doctor);
+    }
 }

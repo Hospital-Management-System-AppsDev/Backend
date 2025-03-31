@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using MySql.Data.MySqlClient;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.SignalR;
-
+using BCrypt.Net;
 
 
 [Route("api/[controller]")]
@@ -27,7 +27,7 @@ public class DoctorsController : ControllerBase
 
         try
         {
-            string query = "SELECT users.id, users.name, users.email, doctor_availability.specialization, doctor_availability.is_available FROM users JOIN doctor_availability ON users.id = doctor_availability.doctor_id WHERE users.role = 'doctor';";
+            string query = "SELECT users.id, users.name, users.email, users.username, users.password, users.gender, users.contact_number, users.age, doctors.specialization, doctors.is_available FROM users JOIN doctors ON users.id = doctors.doctor_id WHERE users.role = 'doctor';";
             using var cmd = new MySqlCommand(query, conn);
             using var reader = cmd.ExecuteReader();
 
@@ -38,8 +38,13 @@ public class DoctorsController : ControllerBase
                     Id = reader.GetInt32(0),
                     Name = reader.GetString(1),
                     Email = reader.GetString(2),
-                    specialization = reader.GetString(3),
-                    is_available = reader.GetInt32(4)
+                    Username = reader.GetString(3),
+                    Password = reader.GetString(4),
+                    Gender = reader.GetString(5),
+                    ContactNumber = reader.GetString(6),
+                    Age = reader.GetInt32(7),
+                    specialization = reader.GetString(8),
+                    is_available = reader.GetInt16(9)
                 });
             }
             return Ok(doctors);
@@ -50,160 +55,57 @@ public class DoctorsController : ControllerBase
         }
     }
 
-    // ✅ Get Doctor by ID
-//     [HttpGet("{id}")]
-//     public IActionResult GetDoctorById(int id)
-//     {
-//         using var conn = _dbConnection.GetOpenConnection();
-//         try
-//         {
-//             string query = "SELECT id, name, age, specialty FROM doctors WHERE id = @id";
-//             using var cmd = new MySqlCommand(query, conn);
-//             cmd.Parameters.AddWithValue("@id", id);
-//             using var reader = cmd.ExecuteReader();
+    [HttpGet("{id}")]
+    public IActionResult GetDoctorById(int id)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
 
-//             if (reader.Read())
-//             {
-//                 return Ok(new Doctor
-//                 {
-//                     Id = reader.GetInt32(0),
-//                     Name = reader.GetString(1),
-//                     Age = reader.GetInt32(2),
-//                     Specialty = reader.GetString(3)
-//                 });
-//             }
-//             return NotFound("Doctor not found");
-//         }
-//         catch (Exception ex)
-//         {
-//             return StatusCode(500, "Error retrieving doctor: " + ex.Message);
-//         }
-//     }
+        try
+        {
+            string query = @"
+                SELECT users.id, users.name, users.email, users.username, users.password, 
+                    users.gender, users.contact_number, users.age, doctors.specialization, 
+                    doctors.is_available 
+                FROM users 
+                JOIN doctors ON users.id = doctors.doctor_id 
+                WHERE users.role = 'doctor' AND users.id = @id;"; // Added WHERE users.id = @id
 
-//     // ✅ Get Doctors by Specialty (returns a list)
-//     [HttpGet("by-specialty/{specialty}")]
-//     public IActionResult GetDoctorsBySpecialty(string specialty)
-//     {
-//         using var conn = _dbConnection.GetOpenConnection();
-//         var doctors = new List<Doctor>();
+            using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@id", id); // Prevents SQL injection
 
-//         try
-//         {
-//             string query = "SELECT id, name, age, specialty FROM doctors WHERE specialty = @specialty";
-//             using var cmd = new MySqlCommand(query, conn);
-//             cmd.Parameters.AddWithValue("@specialty", specialty);
-//             using var reader = cmd.ExecuteReader();
+            using var reader = cmd.ExecuteReader();
+            
+            if (reader.Read()) // Fetch single doctor
+            {
+                var doctor = new Doctor
+                {
+                    Id = reader.GetInt32(0),
+                    Name = reader.GetString(1),
+                    Email = reader.GetString(2),
+                    Username = reader.GetString(3),
+                    Password = reader.GetString(4),
+                    Gender = reader.GetString(5),
+                    ContactNumber = reader.GetString(6),
+                    Age = reader.GetInt32(7),
+                    specialization = reader.GetString(8),
+                    is_available = reader.GetInt16(9)
+                };
+                bool isMatch = BCrypt.Net.BCrypt.Verify("123", doctor.Password);
+                Console.WriteLine($"Password matches hash {doctor.Password}: {isMatch}");
 
-//             while (reader.Read())
-//             {
-//                 doctors.Add(new Doctor
-//                 {
-//                     Id = reader.GetInt32(0),
-//                     Name = reader.GetString(1),
-//                     Age = reader.GetInt32(2),
-//                     Specialty = reader.GetString(3)
-//                 });
-//             }
-//             return doctors.Count > 0 ? Ok(doctors) : NotFound("No doctors found in this specialty.");
-//         }
-//         catch (Exception ex)
-//         {
-//             return StatusCode(500, "Error retrieving doctors: " + ex.Message);
-//         }
-//     }
+                return Ok(doctor);
+            }
+            else
+            {
+                return NotFound($"Doctor with ID {id} not found.");
+            }
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving doctor: " + ex.Message);
+        }
+    }
 
-//     // ✅ Add a New Doctor
-//     [HttpPost("add")]
-//     public IActionResult AddDoctor([FromBody] Doctor doctor)
-//     {
-//         if (doctor == null || string.IsNullOrEmpty(doctor.Name) || string.IsNullOrEmpty(doctor.Specialty) || doctor.Age <= 0)
-//         {
-//             return BadRequest("Invalid doctor data");
-//         }
-
-//         using var conn = _dbConnection.GetOpenConnection();
-//         try
-//         {
-//             string query = "INSERT INTO doctors (name, age, specialty) VALUES(@name, @age, @specialty)";
-//             using var cmd = new MySqlCommand(query, conn);
-//             cmd.Parameters.AddWithValue("@name", doctor.Name);
-//             cmd.Parameters.AddWithValue("@age", doctor.Age);
-//             cmd.Parameters.AddWithValue("@specialty", doctor.Specialty);
-
-//             int res = cmd.ExecuteNonQuery();
-//             return res > 0 ? Ok("Doctor added successfully") : StatusCode(500, "Failed to add doctor");
-//         }
-//         catch (Exception ex)
-//         {
-//             return StatusCode(500, "Error adding doctor: " + ex.Message);
-//         }
-//     }
-
-//     // ✅ Update Doctor Age
-//     [HttpPatch("{id}/age")]
-//     public IActionResult UpdateAge(int id, [FromBody] int age)
-//     {
-//         if (age <= 0)
-//         {
-//             return BadRequest("Invalid age value");
-//         }
-
-//         using var conn = _dbConnection.GetOpenConnection();
-//         try
-//         {
-//             string checkQuery = "SELECT COUNT(*) FROM doctors WHERE id = @id";
-//             using var checkCmd = new MySqlCommand(checkQuery, conn);
-//             checkCmd.Parameters.AddWithValue("@id", id);
-//             bool exists = (int)(checkCmd.ExecuteScalar() ?? 0) > 0;
-
-//             if (!exists) return NotFound("Doctor not found");
-
-//             string updateQuery = "UPDATE doctors SET age = @age WHERE id = @id";
-//             using var updateCmd = new MySqlCommand(updateQuery, conn);
-//             updateCmd.Parameters.AddWithValue("@age", age);
-//             updateCmd.Parameters.AddWithValue("@id", id);
-
-//             int rowsAffected = updateCmd.ExecuteNonQuery();
-//             return rowsAffected > 0 ? Ok("Doctor's age updated successfully") : StatusCode(500, "Failed to update age");
-//         }
-//         catch (Exception ex)
-//         {
-//             return StatusCode(500, "Error updating age: " + ex.Message);
-//         }
-//     }
-
-//     // ✅ Update Doctor Name
-//     [HttpPatch("{id}/name")]
-//     public IActionResult UpdateName(int id, [FromBody] string name)
-//     {
-//         if (string.IsNullOrEmpty(name))
-//         {
-//             return BadRequest("Invalid name value");
-//         }
-
-//         using var conn = _dbConnection.GetOpenConnection();
-//         try
-//         {
-//             string checkQuery = "SELECT COUNT(*) FROM doctors WHERE id = @id";
-//             using var checkCmd = new MySqlCommand(checkQuery, conn);
-//             checkCmd.Parameters.AddWithValue("@id", id);
-//             bool exists = (int)(checkCmd.ExecuteScalar() ?? 0) > 0;
-
-//             if (!exists) return NotFound("Doctor not found");
-
-//             string updateQuery = "UPDATE doctors SET name = @name WHERE id = @id";
-//             using var updateCmd = new MySqlCommand(updateQuery, conn);
-//             updateCmd.Parameters.AddWithValue("@name", name);
-//             updateCmd.Parameters.AddWithValue("@id", id);
-
-//             int rowsAffected = updateCmd.ExecuteNonQuery();
-//             return rowsAffected > 0 ? Ok("Doctor's name updated successfully") : StatusCode(500, "Failed to update name");
-//         }
-//         catch (Exception ex)
-//         {
-//             return StatusCode(500, "Error updating name: " + ex.Message);
-//         }
-//     }
 
     [HttpPatch("{id}/availability")]
     public async Task<IActionResult> UpdateDoctorAvailability(int id, [FromBody] int isAvailable)
@@ -211,7 +113,7 @@ public class DoctorsController : ControllerBase
         using var conn = _dbConnection.GetOpenConnection();
         try
         {
-            string updateQuery = "UPDATE doctor_availability SET is_available = @isAvailable WHERE doctor_id = @id";
+            string updateQuery = "UPDATE doctors SET is_available = @isAvailable WHERE doctor_id = @id";
             using var cmd = new MySqlCommand(updateQuery, conn);
             cmd.Parameters.AddWithValue("@isAvailable", isAvailable);
             cmd.Parameters.AddWithValue("@id", id);
@@ -228,6 +130,89 @@ public class DoctorsController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, "Error updating availability: " + ex.Message);
+        }
+    }
+
+    // ✅ Add a New Doctor
+    [HttpPost("add")]
+    public async Task<IActionResult> AddDoctor([FromBody] Doctor doctor)
+    {
+        if (doctor == null || string.IsNullOrEmpty(doctor.Name) || string.IsNullOrEmpty(doctor.Email) ||
+            string.IsNullOrEmpty(doctor.specialization) || string.IsNullOrEmpty(doctor.Username) ||
+            string.IsNullOrEmpty(doctor.Password) || string.IsNullOrEmpty(doctor.Gender) ||
+            string.IsNullOrEmpty(doctor.ContactNumber))
+        {
+            return BadRequest("Invalid doctor data");
+        }
+
+        using var conn = _dbConnection.GetOpenConnection();
+        using var transaction = conn.BeginTransaction();
+
+        try
+        {
+            // ✅ Insert into `users` table
+            string insertUserQuery = @"INSERT INTO users (name, age, email, role, username, password, 
+                                       contact_number, gender) 
+                                       VALUES(@name, @age, @email, 'doctor', @username, @password, 
+                                       @contact, @gender)";
+
+            using var cmdUser = new MySqlCommand(insertUserQuery, conn, transaction);
+            cmdUser.Parameters.AddWithValue("@name", doctor.Name);
+            cmdUser.Parameters.AddWithValue("@age", doctor.Age);
+            cmdUser.Parameters.AddWithValue("@email", doctor.Email);
+            cmdUser.Parameters.AddWithValue("@username", doctor.Username);
+            cmdUser.Parameters.AddWithValue("@password", BCrypt.Net.BCrypt.HashPassword(doctor.Password));  // ⚠️ Consider hashing the password
+            cmdUser.Parameters.AddWithValue("@contact", doctor.ContactNumber);
+            cmdUser.Parameters.AddWithValue("@gender", doctor.Gender);
+
+            int resUser = cmdUser.ExecuteNonQuery();
+            if (resUser <= 0)
+            {
+                transaction.Rollback();
+                return StatusCode(500, "Failed to add doctor");
+            }
+
+            int doctorId = (int)cmdUser.LastInsertedId;
+
+            // ✅ Insert into `doctor_availability` table
+            string insertAvailabilityQuery = @"INSERT INTO doctors (doctor_id, specialization, is_available) 
+                                               VALUES(@doctorId, @specialization, 1)";
+
+            using var cmdAvailability = new MySqlCommand(insertAvailabilityQuery, conn, transaction);
+            cmdAvailability.Parameters.AddWithValue("@doctorId", doctorId);
+            cmdAvailability.Parameters.AddWithValue("@specialization", doctor.specialization);
+
+            int resAvailability = cmdAvailability.ExecuteNonQuery();
+            if (resAvailability <= 0)
+            {
+                transaction.Rollback();
+                return StatusCode(500, "Failed to set doctor availability");
+            }
+
+            transaction.Commit();
+
+            var newDoctor = new
+            {
+                doctorId,
+                doctor.Name,
+                doctor.Age,
+                doctor.Email,
+                doctor.Username,
+                doctor.ContactNumber,
+                doctor.Gender,
+                doctor.specialization,
+                is_available = 1
+            };
+
+            // ✅ Notify clients via SignalR
+            await _hubContext.Clients.All.SendAsync("DoctorAdded", newDoctor);
+
+            return Ok(new { Message = "Doctor added successfully!", doctorId });
+        }
+        catch (Exception ex)
+        {
+            transaction.Rollback();
+            return StatusCode(500, "Error adding doctor: " + ex.Message);
         }
     }
 }
