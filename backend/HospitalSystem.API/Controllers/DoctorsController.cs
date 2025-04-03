@@ -3,7 +3,7 @@ using MySql.Data.MySqlClient;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.SignalR;
 using BCrypt.Net;
-
+using HospitalApp.Models;
 
 [Route("api/[controller]")]
 [ApiController]
@@ -90,8 +90,6 @@ public class DoctorsController : ControllerBase
                     specialization = reader.GetString(8),
                     is_available = reader.GetInt16(9)
                 };
-                bool isMatch = BCrypt.Net.BCrypt.Verify("123", doctor.Password);
-                Console.WriteLine($"Password matches hash {doctor.Password}: {isMatch}");
 
                 return Ok(doctor);
             }
@@ -132,6 +130,8 @@ public class DoctorsController : ControllerBase
             return StatusCode(500, "Error updating availability: " + ex.Message);
         }
     }
+
+    
 
     // ✅ Add a New Doctor
     [HttpPost("add")]
