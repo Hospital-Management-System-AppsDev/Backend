@@ -9,10 +9,10 @@ using HospitalApp.Models;
 [ApiController]
 public class DoctorsController : ControllerBase
 {
-    private readonly IHubContext<DoctorHub> _hubContext;
+    private readonly IHubContext<HospitalHub> _hubContext;
     private readonly DatabaseConnection _dbConnection;
 
-    public DoctorsController(DatabaseConnection dbConnection, IHubContext<DoctorHub> hubContext)
+    public DoctorsController(DatabaseConnection dbConnection, IHubContext<HospitalHub> hubContext)
     {
         _dbConnection = dbConnection;
         _hubContext = hubContext;

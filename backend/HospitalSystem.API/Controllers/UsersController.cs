@@ -7,10 +7,10 @@ using HospitalApp.Models;
 [Route("api/[controller]")]
 [ApiController]
 public class UsersController : ControllerBase{
-    private readonly IHubContext<DoctorHub> _hubContext;
+    private readonly IHubContext<HospitalHub> _hubContext;
     private readonly DatabaseConnection _dbConnection;
 
-    public UsersController(DatabaseConnection dbConnection, IHubContext<DoctorHub> hubContext)
+    public UsersController(DatabaseConnection dbConnection, IHubContext<HospitalHub> hubContext)
     {
         _dbConnection = dbConnection;
         _hubContext = hubContext;

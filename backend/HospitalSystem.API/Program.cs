@@ -41,6 +41,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 // ✅ Map SignalR Hub
-app.MapHub<DoctorHub>("/doctorHub"); // Ensure DoctorHub.cs exists
+app.MapHub<HospitalHub>("/hospitalHub"); // Ensure DoctorHub.cs exists
 
 app.Run();
