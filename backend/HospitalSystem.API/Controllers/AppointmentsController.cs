@@ -73,6 +73,258 @@ public class AppointmentsController : ControllerBase
         }
     }
 
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetAppointmentById(int id)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+        Appointment appointment = null;
+        try
+        {
+            string query = @"
+                SELECT 
+                    a.pkId, a.PatientID, a.PatientName, a.AssignedDoctor, a.AppointmentType, a.Status, a.AppointmentDateTime,
+                    u.id, u.name, u.email, u.username, u.password, u.gender, u.contact_number, u.age,
+                    d.specialization, d.is_available
+                FROM appointments a
+                JOIN users u ON a.AssignedDoctor = u.id AND u.role = 'doctor'
+                JOIN doctors d ON u.id = d.doctor_id
+                WHERE a.pkId = @id;";
+
+            await using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            if (await reader.ReadAsync())
+            {
+                appointment = new Appointment
+                {
+                    pkId = reader.GetInt32(0),
+                    PatientID = reader.GetInt32(1),
+                    PatientName = reader.GetString(2),
+                    AssignedDoctor = new Doctor
+                    {
+                        Id = reader.GetInt32(7),
+                        Name = reader.GetString(8),
+                        Email = reader.GetString(9),
+                        Username = reader.GetString(10),
+                        Password = reader.GetString(11),
+                        Gender = reader.GetString(12),
+                        ContactNumber = reader.GetString(13),
+                        Age = reader.GetInt32(14),
+                        specialization = reader.GetString(15),
+                        is_available = reader.GetInt32(16)
+                    },
+                    AppointmentType = reader.GetString(4),
+                    Status = reader.GetInt32(5),
+                    AppointmentDateTime = reader.GetDateTime(6)
+                };
+                return Ok(appointment);
+            }
+            return NotFound($"Appointment with ID {id} not found.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving appointments: " + ex.Message);
+        }
+    }
+
+    [HttpGet("by-doctor/{id}")]
+    public async Task<IActionResult> GetAppointmentsByDoctor(int id)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+        var appointments = new List<Appointment>();
+
+        try
+        {
+            string query = @"
+                SELECT 
+                    a.pkId, a.PatientID, a.PatientName, a.AssignedDoctor, a.AppointmentType, a.Status, a.AppointmentDateTime,
+                    u.id, u.name, u.email, u.username, u.password, u.gender, u.contact_number, u.age,
+                    d.specialization, d.is_available
+                FROM appointments a
+                JOIN users u ON a.AssignedDoctor = u.id AND u.role = 'doctor'
+                JOIN doctors d ON u.id = d.doctor_id
+                WHERE a.AssignedDoctor = @doctorId;";
+
+            await using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@doctorId", id);
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                appointments.Add(new Appointment
+                {
+                    pkId = reader.GetInt32(0),
+                    PatientID = reader.GetInt32(1),
+                    PatientName = reader.GetString(2),
+                    AssignedDoctor = new Doctor
+                    {
+                        Id = reader.GetInt32(7),
+                        Name = reader.GetString(8),
+                        Email = reader.GetString(9),
+                        Username = reader.GetString(10),
+                        Password = reader.GetString(11),
+                        Gender = reader.GetString(12),
+                        ContactNumber = reader.GetString(13),
+                        Age = reader.GetInt32(14),
+                        specialization = reader.GetString(15),
+                        is_available = reader.GetInt32(16)
+                    },
+                    AppointmentType = reader.GetString(4),
+                    Status = reader.GetInt32(5),
+                    AppointmentDateTime = reader.GetDateTime(6)
+                });
+            }
+
+            return Ok(appointments);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving appointments: " + ex.Message);
+        }
+    }
+
+    [HttpGet("available-slots/{doctorId}/{date}/{appointmentType}")]
+    public async Task<IActionResult> GetDoctorAvailableSlots(int doctorId, DateTime date, string appointmentType)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+        try
+        {
+            // First check if doctor exists and is available
+            string doctorQuery = @"
+                SELECT d.is_available 
+                FROM users u
+                JOIN doctors d ON u.id = d.doctor_id
+                WHERE u.id = @doctorId AND u.role = 'doctor'";
+
+            await using var doctorCmd = new MySqlCommand(doctorQuery, conn);
+            doctorCmd.Parameters.AddWithValue("@doctorId", doctorId);
+            var isAvailable = await doctorCmd.ExecuteScalarAsync();
+            
+            if (isAvailable == null)
+            {
+                return NotFound($"Doctor with ID {doctorId} not found.");
+            }
+            
+            if (date.Date == DateTime.Now.Date && Convert.ToInt32(isAvailable) == 0)
+            {
+                return Ok(new { message = "Doctor is not available for appointments.", availableSlots = new List<DateTime>() });
+            }
+            
+            // Get all appointments for this doctor on the specified date
+            string appointmentsQuery = @"
+                SELECT AppointmentDateTime, AppointmentType
+                FROM appointments
+                WHERE AssignedDoctor = @doctorId
+                AND DATE(AppointmentDateTime) = DATE(@date)
+                AND Status != 3"; // Exclude cancelled appointments (assuming status 3 is cancelled)
+                
+            List<(DateTime dateTime, string type)> bookedSlots = new List<(DateTime, string)>();
+            
+            await using var appCmd = new MySqlCommand(appointmentsQuery, conn);
+            appCmd.Parameters.AddWithValue("@doctorId", doctorId);
+            appCmd.Parameters.AddWithValue("@date", date.Date);
+            
+            await using var reader = await appCmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                bookedSlots.Add((reader.GetDateTime(0), reader.GetString(1)));
+            }
+            
+            // Define working hours (9 AM to 5 PM)
+            DateTime startTime = date.Date.AddHours(9); // 9 AM
+            DateTime endTime = date.Date.AddHours(17);  // 5 PM
+            
+            // Calculate slot duration based on appointment type
+            TimeSpan slotDuration;
+            switch (appointmentType.ToLower())
+            {
+                case "consultation":
+                    slotDuration = TimeSpan.FromMinutes(30);
+                    break;
+                case "check up":
+                    slotDuration = TimeSpan.FromHours(1);
+                    break;
+                case "surgery":
+                    // For surgery, return only a single full-day slot if the day is completely free
+                    if (!bookedSlots.Any())
+                    {
+                        return Ok(new { 
+                            message = "Full day available for surgery", 
+                            availableSlots = new[] { startTime }
+                        });
+                    }
+                    else
+                    {
+                        return Ok(new { 
+                            message = "Day already has appointments scheduled", 
+                            availableSlots = new List<DateTime>()
+                        });
+                    }
+                default:
+                    return BadRequest("Invalid appointment type. Valid types are: consultation, check up, surgery");
+            }
+            
+            // Generate all possible slots
+            List<DateTime> availableSlots = new List<DateTime>();
+            DateTime currentSlot = startTime;
+            
+            while (currentSlot.Add(slotDuration) <= endTime)
+            {
+                bool slotAvailable = true;
+                
+                // Check if this slot overlaps with any booked appointment
+                foreach (var (bookedTime, bookedType) in bookedSlots)
+                {
+                    TimeSpan bookedDuration;
+                    switch (bookedType.ToLower())
+                    {
+                        case "consultation":
+                            bookedDuration = TimeSpan.FromMinutes(30);
+                            break;
+                        case "check up":
+                            bookedDuration = TimeSpan.FromHours(1);
+                            break;
+                        case "surgery":
+                            bookedDuration = TimeSpan.FromHours(8); // Full day
+                            break;
+                        default:
+                            bookedDuration = TimeSpan.FromHours(1); // Default
+                            break;
+                    }
+                    
+                    // Check for overlap
+                    if (currentSlot < bookedTime.Add(bookedDuration) && 
+                        currentSlot.Add(slotDuration) > bookedTime)
+                    {
+                        slotAvailable = false;
+                        break;
+                    }
+                }
+                
+                if (slotAvailable)
+                {
+                    availableSlots.Add(currentSlot);
+                }
+                
+                currentSlot = currentSlot.Add(slotDuration);
+            }
+            
+            return Ok(new { 
+                doctorId,
+                date = date.ToString("yyyy-MM-dd"),
+                appointmentType,
+                slotDuration = slotDuration.ToString(),
+                availableSlots
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving available slots: " + ex.Message);
+        }
+}
+
+
     [HttpPost("add")]
     public async Task<IActionResult> CreateAppointment([FromBody] Appointment appointment)
     {
@@ -210,61 +462,34 @@ public class AppointmentsController : ControllerBase
         }
     }
 
-
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetAppointmentById(int id)
+    [HttpPatch("update-status/{id}")]
+    public async Task<IActionResult> UpdateStatusToDone(int id)
     {
         using var conn = _dbConnection.GetOpenConnection();
-        Appointment appointment = null;
+
         try
         {
-            string query = @"
-                SELECT 
-                    a.pkId, a.PatientID, a.PatientName, a.AssignedDoctor, a.AppointmentType, a.Status, a.AppointmentDateTime,
-                    u.id, u.name, u.email, u.username, u.password, u.gender, u.contact_number, u.age,
-                    d.specialization, d.is_available
-                FROM appointments a
-                JOIN users u ON a.AssignedDoctor = u.id AND u.role = 'doctor'
-                JOIN doctors d ON u.id = d.doctor_id
-                WHERE a.pkId = @id;";
+            string query = @"UPDATE appointments SET status = 1 WHERE pkId = @id";
 
             await using var cmd = new MySqlCommand(query, conn);
             cmd.Parameters.AddWithValue("@id", id);
-            await using var reader = await cmd.ExecuteReaderAsync();
 
-            if (await reader.ReadAsync())
+            int rowsAffected = await cmd.ExecuteNonQueryAsync();
+
+            if (rowsAffected > 0)
             {
-                appointment = new Appointment
-                {
-                    pkId = reader.GetInt32(0),
-                    PatientID = reader.GetInt32(1),
-                    PatientName = reader.GetString(2),
-                    AssignedDoctor = new Doctor
-                    {
-                        Id = reader.GetInt32(7),
-                        Name = reader.GetString(8),
-                        Email = reader.GetString(9),
-                        Username = reader.GetString(10),
-                        Password = reader.GetString(11),
-                        Gender = reader.GetString(12),
-                        ContactNumber = reader.GetString(13),
-                        Age = reader.GetInt32(14),
-                        specialization = reader.GetString(15),
-                        is_available = reader.GetInt32(16)
-                    },
-                    AppointmentType = reader.GetString(4),
-                    Status = reader.GetInt32(5),
-                    AppointmentDateTime = reader.GetDateTime(6)
-                };
-                return Ok(appointment);
+                await _hubContext.Clients.All.SendAsync("CompleteAppointment", id);
+                return Ok(new { message = "Appointment marked as done successfully." });
             }
-            return NotFound($"Doctor with ID {id} not found.");
+
+            return NotFound($"Appointment with ID {id} not found.");
         }
         catch (Exception ex)
         {
-            return StatusCode(500, "Error retrieving appointments: " + ex.Message);
+            return StatusCode(500, "Error updating appointment status: " + ex.Message);
         }
     }
+
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> CancelAppointment(int id)
