@@ -37,7 +37,7 @@ public class RecordsController : ControllerBase
                         a.pkId, a.PatientID AS AppointmentPatientID, a.PatientName, a.AssignedDoctor, 
                         a.AppointmentType, a.Status, a.AppointmentDateTime,
                         u.name AS DoctorName, u.email AS DoctorEmail, u.contact_number AS DoctorContactNumber,
-                        u.gender AS DoctorGender, u.age AS DoctorAge, u.username AS DoctorUsername,
+                        u.sex AS DoctorSex, u.birthday AS DoctorBirthday, u.username AS DoctorUsername,
                         d.specialization, d.is_available
                     FROM records r
                     JOIN patients p ON r.fkPatientId = p.patientId
@@ -89,8 +89,8 @@ public class RecordsController : ControllerBase
                                         is_available = reader.GetInt32("is_available"),
                                         Username = reader.GetString("DoctorUsername"),
                                         ContactNumber = reader.GetString("DoctorContactNumber"),
-                                        Gender = reader.GetString("DoctorGender"),
-                                        Age = reader.GetInt32("DoctorAge")
+                                        Sex = reader.GetString("DoctorSex"),
+                                        Birthday = reader.GetDateTime("DoctorBirthday")
                                     }
                                 }
                             };

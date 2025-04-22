@@ -27,7 +27,7 @@ public class DoctorsController : ControllerBase
 
         try
         {
-            string query = "SELECT users.id, users.name, users.email, users.username, users.password, users.gender, users.contact_number, users.age, doctors.specialization, doctors.is_available FROM users JOIN doctors ON users.id = doctors.doctor_id WHERE users.role = 'doctor';";
+            string query = "SELECT users.id, users.name, users.email, users.username, users.password, users.sex, users.contact_number, users.birthday, doctors.specialization, doctors.is_available FROM users JOIN doctors ON users.id = doctors.doctor_id WHERE users.role = 'doctor';";
             using var cmd = new MySqlCommand(query, conn);
             using var reader = cmd.ExecuteReader();
 
@@ -40,11 +40,11 @@ public class DoctorsController : ControllerBase
                     Email = reader.GetString(2),
                     Username = reader.GetString(3),
                     Password = reader.GetString(4),
-                    Gender = reader.GetString(5),
+                    Sex = reader.GetString(5),
                     ContactNumber = reader.GetString(6),
-                    Age = reader.GetInt32(7),
+                    Birthday = reader.GetDateTime(7),
                     specialization = reader.GetString(8),
-                    is_available = reader.GetInt16(9)
+                    is_available = reader.GetInt16(9),
                 });
             }
             return Ok(doctors);
@@ -64,7 +64,7 @@ public class DoctorsController : ControllerBase
         {
             string query = @"
                 SELECT users.id, users.name, users.email, users.username, users.password, 
-                    users.gender, users.contact_number, users.age, doctors.specialization, 
+                    users.sex, users.contact_number, users.birthday, doctors.specialization, 
                     doctors.is_available 
                 FROM users 
                 JOIN doctors ON users.id = doctors.doctor_id 
@@ -84,9 +84,9 @@ public class DoctorsController : ControllerBase
                     Email = reader.GetString(2),
                     Username = reader.GetString(3),
                     Password = reader.GetString(4),
-                    Gender = reader.GetString(5),
+                    Sex = reader.GetString(5),
                     ContactNumber = reader.GetString(6),
-                    Age = reader.GetInt32(7),
+                    Birthday = reader.GetDateTime(7),
                     specialization = reader.GetString(8),
                     is_available = reader.GetInt16(9)
                 };
@@ -139,7 +139,7 @@ public class DoctorsController : ControllerBase
     {
         if (doctor == null || string.IsNullOrEmpty(doctor.Name) || string.IsNullOrEmpty(doctor.Email) ||
             string.IsNullOrEmpty(doctor.specialization) || string.IsNullOrEmpty(doctor.Username) ||
-            string.IsNullOrEmpty(doctor.Password) || string.IsNullOrEmpty(doctor.Gender) ||
+            string.IsNullOrEmpty(doctor.Password) || string.IsNullOrEmpty(doctor.Sex) ||
             string.IsNullOrEmpty(doctor.ContactNumber))
         {
             return BadRequest("Invalid doctor data");
@@ -151,19 +151,19 @@ public class DoctorsController : ControllerBase
         try
         {
             // ✅ Insert into `users` table
-            string insertUserQuery = @"INSERT INTO users (name, age, email, role, username, password, 
-                                       contact_number, gender) 
-                                       VALUES(@name, @age, @email, 'doctor', @username, @password, 
-                                       @contact, @gender)";
+            string insertUserQuery = @"INSERT INTO users (name, birthday, email, role, username, password, 
+                                       contact_number, sex) 
+                                       VALUES(@name, @birthday, @email, 'doctor', @username, @password, 
+                                       @contact, @sex)";
 
             using var cmdUser = new MySqlCommand(insertUserQuery, conn, transaction);
             cmdUser.Parameters.AddWithValue("@name", doctor.Name);
-            cmdUser.Parameters.AddWithValue("@age", doctor.Age);
+            cmdUser.Parameters.AddWithValue("@birthday", doctor.Birthday);
             cmdUser.Parameters.AddWithValue("@email", doctor.Email);
             cmdUser.Parameters.AddWithValue("@username", doctor.Username);
             cmdUser.Parameters.AddWithValue("@password", BCrypt.Net.BCrypt.HashPassword(doctor.Password));  // ⚠️ Consider hashing the password
             cmdUser.Parameters.AddWithValue("@contact", doctor.ContactNumber);
-            cmdUser.Parameters.AddWithValue("@gender", doctor.Gender);
+            cmdUser.Parameters.AddWithValue("@sex", doctor.Sex);
 
             int resUser = cmdUser.ExecuteNonQuery();
             if (resUser <= 0)
@@ -196,10 +196,11 @@ public class DoctorsController : ControllerBase
                 doctorId,
                 doctor.Name,
                 doctor.Age,
+                doctor.Birthday,
                 doctor.Email,
                 doctor.Username,
                 doctor.ContactNumber,
-                doctor.Gender,
+                doctor.Sex,
                 doctor.specialization,
                 is_available = 1
             };

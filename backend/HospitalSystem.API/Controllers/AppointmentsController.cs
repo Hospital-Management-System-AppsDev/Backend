@@ -30,7 +30,7 @@ public class AppointmentsController : ControllerBase
             string query = @"
                 SELECT 
                     a.pkId, a.PatientID, a.PatientName, a.AssignedDoctor, a.AppointmentType, a.Status, a.AppointmentDateTime,
-                    u.id, u.name, u.email, u.username, u.password, u.gender, u.contact_number, u.age,
+                    u.id, u.name, u.email, u.username, u.password, u.sex, u.contact_number, u.birthday,
                     d.specialization, d.is_available
                 FROM appointments a
                 JOIN users u ON a.AssignedDoctor = u.id AND u.role = 'doctor'
@@ -53,9 +53,9 @@ public class AppointmentsController : ControllerBase
                         Email = reader.GetString(9),
                         Username = reader.GetString(10),
                         Password = reader.GetString(11),
-                        Gender = reader.GetString(12),
+                        Sex = reader.GetString(12),
                         ContactNumber = reader.GetString(13),
-                        Age = reader.GetInt32(14),
+                        Birthday = reader.GetDateTime(14),
                         specialization = reader.GetString(15),
                         is_available = reader.GetInt32(16)
                     },
@@ -83,7 +83,7 @@ public class AppointmentsController : ControllerBase
             string query = @"
                 SELECT 
                     a.pkId, a.PatientID, a.PatientName, a.AssignedDoctor, a.AppointmentType, a.Status, a.AppointmentDateTime,
-                    u.id, u.name, u.email, u.username, u.password, u.gender, u.contact_number, u.age,
+                    u.id, u.name, u.email, u.username, u.password, u.sex, u.contact_number, u.birthday,
                     d.specialization, d.is_available
                 FROM appointments a
                 JOIN users u ON a.AssignedDoctor = u.id AND u.role = 'doctor'
@@ -108,9 +108,9 @@ public class AppointmentsController : ControllerBase
                         Email = reader.GetString(9),
                         Username = reader.GetString(10),
                         Password = reader.GetString(11),
-                        Gender = reader.GetString(12),
+                        Sex = reader.GetString(12),
                         ContactNumber = reader.GetString(13),
-                        Age = reader.GetInt32(14),
+                        Birthday = reader.GetDateTime(14),
                         specialization = reader.GetString(15),
                         is_available = reader.GetInt32(16)
                     },
@@ -139,7 +139,7 @@ public class AppointmentsController : ControllerBase
             string query = @"
                 SELECT 
                     a.pkId, a.PatientID, a.PatientName, a.AssignedDoctor, a.AppointmentType, a.Status, a.AppointmentDateTime,
-                    u.id, u.name, u.email, u.username, u.password, u.gender, u.contact_number, u.age,
+                    u.id, u.name, u.email, u.username, u.password, u.sex, u.contact_number, u.birthday,
                     d.specialization, d.is_available
                 FROM appointments a
                 JOIN users u ON a.AssignedDoctor = u.id AND u.role = 'doctor'
@@ -164,9 +164,9 @@ public class AppointmentsController : ControllerBase
                         Email = reader.GetString(9),
                         Username = reader.GetString(10),
                         Password = reader.GetString(11),
-                        Gender = reader.GetString(12),
+                        Sex = reader.GetString(12),
                         ContactNumber = reader.GetString(13),
-                        Age = reader.GetInt32(14),
+                        Birthday = reader.GetDateTime(14),
                         specialization = reader.GetString(15),
                         is_available = reader.GetInt32(16)
                     },
@@ -232,8 +232,8 @@ public class AppointmentsController : ControllerBase
             }
             
             // Define working hours (9 AM to 5 PM)
-            DateTime startTime = date.Date.AddHours(9); // 9 AM
-            DateTime endTime = date.Date.AddHours(17);  // 5 PM
+            DateTime startTime = date.Date.AddHours(6); // 6 AM
+            DateTime endTime = date.Date.AddHours(22);  // 9 PM
             
             // Calculate slot duration based on appointment type
             TimeSpan slotDuration;
@@ -374,7 +374,7 @@ public class AppointmentsController : ControllerBase
             string getQuery = @"
                 SELECT 
                     a.pkId, a.PatientID, a.PatientName, a.AssignedDoctor, a.AppointmentType, a.Status, a.AppointmentDateTime,
-                    u.id, u.name, u.email, u.username, u.password, u.gender, u.contact_number, u.age,
+                    u.id, u.name, u.email, u.username, u.password, u.sex, u.contact_number, u.birthday,
                     d.specialization, d.is_available
                 FROM appointments a
                 JOIN users u ON a.AssignedDoctor = u.id AND u.role = 'doctor'
@@ -400,9 +400,9 @@ public class AppointmentsController : ControllerBase
                             Email = reader.GetString(9),
                             Username = reader.GetString(10),
                             Password = reader.GetString(11),
-                            Gender = reader.GetString(12),
+                            Sex = reader.GetString(12),
                             ContactNumber = reader.GetString(13),
-                            Age = reader.GetInt32(14),
+                            Birthday = reader.GetDateTime(14),
                             specialization = reader.GetString(15),
                             is_available = reader.GetInt32(16)
                         },
@@ -518,4 +518,61 @@ public class AppointmentsController : ControllerBase
         }
     }
 
+
+    [HttpGet("getyears/{year}")]
+    public async Task<IActionResult> GetYearsAsync(int year)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+
+        try
+        {
+            string query = @"SELECT COUNT(pkId) FROM appointments WHERE YEAR(AppointmentDateTime) = @year;
+";
+
+            await using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@year", year);
+            var count = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+
+            return Ok(new { Year = year, NumberOfPatients = count });
+
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving patient: " + ex.Message);
+        }
+    }
+
+    [HttpGet("getnumpatientspermonth/{year:int}/{month:int}")]
+    public async Task<IActionResult> GetNumPatientsPerMonth(int year, int month)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+
+        try
+        {
+            string query = @"
+                SELECT MONTH(AppointmentDateTime) AS Month, COUNT(PatientID) AS NumPatients
+                FROM appointments
+                WHERE YEAR(AppointmentDateTime) = @year AND MONTH(AppointmentDateTime) <= @month AND status = 1
+                GROUP BY MONTH(AppointmentDateTime);";
+
+            await using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@year", year);
+            cmd.Parameters.AddWithValue("@month", month);
+
+            var result = new int[month]; // Index 0 = Jan, Index (month-1) = the given month
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                int m = Convert.ToInt32(reader["Month"]);   // e.g., 1 for Jan, 2 for Feb
+                int count = Convert.ToInt32(reader["NumPatients"]);
+                result[m - 1] = count; // fill result at correct month index
+            }
+            return Ok(result.ToList());
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving patient count: " + ex.Message);
+        }
+    }
 }

@@ -18,7 +18,7 @@ public class UsersController : ControllerBase{
 
     [HttpPost("add/admin")]
     public async Task<IActionResult> AddAdmin([FromBody] User user){
-        if(user == null || string.IsNullOrEmpty(user.Name) || string.IsNullOrEmpty(user.Email) || string.IsNullOrEmpty(user.Username) || string.IsNullOrEmpty(user.Password) || string.IsNullOrEmpty(user.Gender) || string.IsNullOrEmpty(user.ContactNumber) || string.IsNullOrEmpty(user.Role)){
+        if(user == null || string.IsNullOrEmpty(user.Name) || string.IsNullOrEmpty(user.Email) || string.IsNullOrEmpty(user.Username) || string.IsNullOrEmpty(user.Password) || string.IsNullOrEmpty(user.Sex) || string.IsNullOrEmpty(user.ContactNumber) || string.IsNullOrEmpty(user.Role)){
             return BadRequest("Invalid User Data.");
         }
 
@@ -26,16 +26,17 @@ public class UsersController : ControllerBase{
         using var transaction= conn.BeginTransaction();
 
         try{
-            string insertAdminQuery = @"INSERT INTO users(name, age, email, role, username, password, contact_number, gender) VALUES (@name, @age, @email, 'admin', @username, @password, @contact, @gender);";
+            string insertAdminQuery = @"INSERT INTO users(name, birthday, email, role, username, password, contact_number, sex) 
+            VALUES (@name, @birthday, @email, 'admin', @username, @password, @contact, @sex);";
 
             using var cmdUser = new MySqlCommand(insertAdminQuery, conn, transaction);
             cmdUser.Parameters.AddWithValue("@name", user.Name);
-            cmdUser.Parameters.AddWithValue("@age", user.Age);
+            cmdUser.Parameters.AddWithValue("@birthday", user.Birthday);
             cmdUser.Parameters.AddWithValue("@email", user.Email);
             cmdUser.Parameters.AddWithValue("@username", user.Username);
             cmdUser.Parameters.AddWithValue("@password",  BCrypt.Net.BCrypt.HashPassword(user.Password));
             cmdUser.Parameters.AddWithValue("@contact", user.ContactNumber);
-            cmdUser.Parameters.AddWithValue("@gender", user.Gender);
+            cmdUser.Parameters.AddWithValue("@sex", user.Sex);
             
             int resUser = cmdUser.ExecuteNonQuery();
             if (resUser <= 0)
@@ -46,14 +47,15 @@ public class UsersController : ControllerBase{
             int adminId = (int)cmdUser.LastInsertedId;
             transaction.Commit();
 
-            var newAdmin = new{
-                adminId,
+            var newAdmin = new {
+                user.Id,
                 user.Name,
                 user.Email,
+                user.Role,
                 user.Username,
-                user.Password,
-                user.Gender,
                 user.ContactNumber,
+                user.Sex,
+                user.Birthday,
                 user.Age
             };
 
@@ -83,14 +85,15 @@ public class UsersController : ControllerBase{
                 var user = new User {
                     Id = reader.GetInt32(0),
                     Name = reader.GetString(1),
-                    Age = reader.GetInt32(2),
-                    Email = reader.GetString(3),
-                    Role = reader.GetString(4),
-                    Username = reader.GetString(5),
-                    Password = reader.GetString(6),
-                    ContactNumber = reader.GetString(7),
-                    Gender = reader.GetString(8) 
+                    Email = reader.GetString(2),
+                    Role = reader.GetString(3),
+                    Username = reader.GetString(4),
+                    Password = reader.GetString(5),
+                    ContactNumber = reader.GetString(6),
+                    Sex = reader.GetString(7),
+                    Birthday = reader.GetDateTime(8)
                 };
+
 
                 return Ok(user);
             }
@@ -116,14 +119,15 @@ public class UsersController : ControllerBase{
                 var user = new User {
                     Id = reader.GetInt32(0),
                     Name = reader.GetString(1),
-                    Age = reader.GetInt32(2),
-                    Email = reader.GetString(3),
-                    Role = reader.GetString(4),
-                    Username = reader.GetString(5),
-                    Password = reader.GetString(6),
-                    ContactNumber = reader.GetString(7),
-                    Gender = reader.GetString(8) 
+                    Email = reader.GetString(2),
+                    Role = reader.GetString(3),
+                    Username = reader.GetString(4),
+                    Password = reader.GetString(5),
+                    ContactNumber = reader.GetString(6),
+                    Sex = reader.GetString(7),
+                    Birthday = reader.GetDateTime(8)
                 };
+
 
                 return Ok(user);
             }
