@@ -68,12 +68,12 @@ public class PatientsController : ControllerBase
                 VALUES ( @PatientName, @sex, @address, @bloodtype, @email, @contactnumber, @bday);";
 
             await using var cmd = new MySqlCommand(query, conn);
-            cmd.Parameters.AddWithValue("@PatientName", patient.Name);
+            cmd.Parameters.AddWithValue("@PatientName", patient.Name.Trim());
             cmd.Parameters.AddWithValue("@sex", patient.Sex);
             cmd.Parameters.AddWithValue("@address", patient.Address);
             cmd.Parameters.AddWithValue("@bloodtype", patient.BloodType);
-            cmd.Parameters.AddWithValue("@email", patient.Email);
-            cmd.Parameters.AddWithValue("@contactnumber", patient.ContactNumber);
+            cmd.Parameters.AddWithValue("@email", patient.Email.Trim());
+            cmd.Parameters.AddWithValue("@contactnumber", patient.ContactNumber.Trim());
             cmd.Parameters.AddWithValue("@bday", patient.Bday);
 
 
@@ -129,6 +129,91 @@ public class PatientsController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, "Error retrieving patient: " + ex.Message);
+        }
+    }
+
+    [HttpGet("getnumpatientspermonth/{year:int}/{month:int}")]
+    public async Task<IActionResult> GetNumPatientsPerMonth(int year, int month)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+
+        try
+        {
+            string query = @"
+                SELECT MONTH(createdAt) AS Month, COUNT(PatientID) AS NumPatients
+                FROM patients
+                WHERE YEAR(createdAt) = @year AND MONTH(createdAt) <= @month
+                GROUP BY MONTH(createdAt);";
+
+            await using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@year", year);
+            cmd.Parameters.AddWithValue("@month", month);
+
+            var result = new int[month]; // Index 0 = Jan, Index (month-1) = the given month
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                int m = Convert.ToInt32(reader["Month"]);   // e.g., 1 for Jan, 2 for Feb
+                int count = Convert.ToInt32(reader["NumPatients"]);
+                result[m - 1] = count; // fill result at correct month index
+            }
+            return Ok(result.ToList());
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving patient count: " + ex.Message);
+        }
+    }
+
+    [HttpGet("getnewpatients/{year}/{month}")]
+    public async Task<IActionResult> GetNewDoctors(int year, int month)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+        try
+        {
+            string countQuery = @"
+                SELECT COUNT(patientId) AS NumPatients
+                FROM patients
+                WHERE YEAR(createdAt) = @year AND MONTH(createdAt) = @month;";
+
+            using var cmd = new MySqlCommand(countQuery, conn);
+            cmd.Parameters.AddWithValue("@year", year);
+            cmd.Parameters.AddWithValue("@month", month);
+
+            var result = await cmd.ExecuteScalarAsync();
+            int numDoctors = Convert.ToInt32(result);
+
+            return Ok(numDoctors);
+        }
+        catch (Exception ex)
+        {
+            // Log the error (optional)
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("getnumpatients")]
+    public async Task<IActionResult> GetNumDoctors()
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+        try
+        {
+            string countQuery = @"
+                SELECT COUNT(patientId) AS NumPatients
+                FROM patients;";
+
+            using var cmd = new MySqlCommand(countQuery, conn);
+
+            var result = await cmd.ExecuteScalarAsync();
+            int numDoctors = Convert.ToInt32(result);
+
+            return Ok(numDoctors);
+        }
+        catch (Exception ex)
+        {
+            // Log the error (optional)
+            return StatusCode(500, new { error = ex.Message });
         }
     }
 }

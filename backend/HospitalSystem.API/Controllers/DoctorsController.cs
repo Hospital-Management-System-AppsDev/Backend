@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Microsoft.AspNetCore.SignalR;
 using BCrypt.Net;
 using HospitalApp.Models;
+using System.Text.RegularExpressions;
 
 [Route("api/[controller]")]
 [ApiController]
@@ -74,7 +75,7 @@ public class DoctorsController : ControllerBase
             cmd.Parameters.AddWithValue("@id", id); // Prevents SQL injection
 
             using var reader = cmd.ExecuteReader();
-            
+
             if (reader.Read()) // Fetch single doctor
             {
                 var doctor = new Doctor
@@ -104,6 +105,59 @@ public class DoctorsController : ControllerBase
         }
     }
 
+    [HttpGet("getnewdoctors/{year}/{month}")]
+    public async Task<IActionResult> GetNewDoctors(int year, int month)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+        try
+        {
+            string countQuery = @"
+                SELECT COUNT(id) AS NumDoctors
+                FROM users
+                WHERE YEAR(created_At) = @year AND MONTH(created_At) = @month AND role = 'doctor';";
+
+            using var cmd = new MySqlCommand(countQuery, conn);
+            cmd.Parameters.AddWithValue("@year", year);
+            cmd.Parameters.AddWithValue("@month", month);
+
+            var result = await cmd.ExecuteScalarAsync();
+            int numDoctors = Convert.ToInt32(result);
+
+            return Ok(numDoctors);
+        }
+        catch (Exception ex)
+        {
+            // Log the error (optional)
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("getnumdoctors")]
+    public async Task<IActionResult> GetNumDoctors()
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+        try
+        {
+            string countQuery = @"
+                SELECT COUNT(id) AS NumDoctors
+                FROM users
+                WHERE role = 'doctor';";
+
+            using var cmd = new MySqlCommand(countQuery, conn);
+
+            var result = await cmd.ExecuteScalarAsync();
+            int numDoctors = Convert.ToInt32(result);
+
+            return Ok(numDoctors);
+        }
+        catch (Exception ex)
+        {
+            // Log the error (optional)
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+
 
     [HttpPatch("{id}/availability")]
     public async Task<IActionResult> UpdateDoctorAvailability(int id, [FromBody] int isAvailable)
@@ -111,7 +165,7 @@ public class DoctorsController : ControllerBase
         using var conn = _dbConnection.GetOpenConnection();
         try
         {
-            string updateQuery = "UPDATE doctors SET is_available = @isAvailable WHERE doctor_id = @id";
+            string updateQuery = @"UPDATE doctors SET is_available = @isAvailable WHERE doctor_id = @id";
             using var cmd = new MySqlCommand(updateQuery, conn);
             cmd.Parameters.AddWithValue("@isAvailable", isAvailable);
             cmd.Parameters.AddWithValue("@id", id);
@@ -131,8 +185,6 @@ public class DoctorsController : ControllerBase
         }
     }
 
-    
-
     // ✅ Add a New Doctor
     [HttpPost("add")]
     public async Task<IActionResult> AddDoctor([FromBody] Doctor doctor)
@@ -145,11 +197,23 @@ public class DoctorsController : ControllerBase
             return BadRequest("Invalid doctor data");
         }
 
+        if (doctor.Username.Contains(' '))
+            return BadRequest(new { message = "Username should not contain spaces" });
+        else if (!Regex.IsMatch(doctor.Username, @"^[a-zA-Z0-9]+$"))
+        {
+            return BadRequest(new { message = "Username can only contain letters and numbers" });
+        }
+
+        if (doctor.Email.Contains(' '))
+            return BadRequest(new { message = "Email should not contain spaces" });
+
+
         using var conn = _dbConnection.GetOpenConnection();
         using var transaction = conn.BeginTransaction();
 
         try
         {
+
             // ✅ Insert into `users` table
             string insertUserQuery = @"INSERT INTO users (name, birthday, email, role, username, password, 
                                        contact_number, sex) 

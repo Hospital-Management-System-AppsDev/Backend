@@ -126,9 +126,9 @@ public class RecordsController : ControllerBase
             ";
 
             await using var cmd = new MySqlCommand(query, conn);
-            cmd.Parameters.AddWithValue("@medicalCertificate", record.medicalCertificatePath);
-            cmd.Parameters.AddWithValue("@diagnosis", record.diagnosisPath);
-            cmd.Parameters.AddWithValue("@prescription", record.prescriptionPath);
+            cmd.Parameters.AddWithValue("@medicalCertificate", record.medicalCertificatePath.Trim() ?? "");
+            cmd.Parameters.AddWithValue("@diagnosis", record.diagnosisPath.Trim() ?? "");
+            cmd.Parameters.AddWithValue("@prescription", record.prescriptionPath.Trim() ?? "");
             cmd.Parameters.AddWithValue("@fkPatientId", record.patient.PatientID);
             cmd.Parameters.AddWithValue("@fkAppointmentId", record.appointment.pkId);
             cmd.Parameters.AddWithValue("@fkDoctorId", record.appointment.AssignedDoctor.Id);

@@ -40,4 +40,19 @@ public class HospitalHub : Hub
     {
         await Clients.All.SendAsync("RecordAdded", record);
     }
+
+    public async Task AddMedicine(Medicines medicine)
+    {
+        await Clients.All.SendAsync("MedicineAdded", medicine);
+    }
+
+    public async Task UpdateMedicine(Medicines medicine)
+    {
+        await Clients.All.SendAsync("MedicineUpdated", medicine);
+    }
+
+    public async Task DeleteMedicine(int id)
+    {
+        await Clients.All.SendAsync("MedicineDeleted", id);
+    }
 }

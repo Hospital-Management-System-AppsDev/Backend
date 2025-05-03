@@ -200,17 +200,17 @@ public class AppointmentsController : ControllerBase
             await using var doctorCmd = new MySqlCommand(doctorQuery, conn);
             doctorCmd.Parameters.AddWithValue("@doctorId", doctorId);
             var isAvailable = await doctorCmd.ExecuteScalarAsync();
-            
+
             if (isAvailable == null)
             {
                 return NotFound($"Doctor with ID {doctorId} not found.");
             }
-            
+
             if (date.Date == DateTime.Now.Date && Convert.ToInt32(isAvailable) == 0)
             {
                 return Ok(new { message = "Doctor is not available for appointments.", availableSlots = new List<DateTime>() });
             }
-            
+
             // Get all appointments for this doctor on the specified date
             string appointmentsQuery = @"
                 SELECT AppointmentDateTime, AppointmentType
@@ -218,23 +218,23 @@ public class AppointmentsController : ControllerBase
                 WHERE AssignedDoctor = @doctorId
                 AND DATE(AppointmentDateTime) = DATE(@date)
                 AND Status != 3"; // Exclude cancelled appointments (assuming status 3 is cancelled)
-                
+
             List<(DateTime dateTime, string type)> bookedSlots = new List<(DateTime, string)>();
-            
+
             await using var appCmd = new MySqlCommand(appointmentsQuery, conn);
             appCmd.Parameters.AddWithValue("@doctorId", doctorId);
             appCmd.Parameters.AddWithValue("@date", date.Date);
-            
+
             await using var reader = await appCmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
                 bookedSlots.Add((reader.GetDateTime(0), reader.GetString(1)));
             }
-            
+
             // Define working hours (9 AM to 5 PM)
             DateTime startTime = date.Date.AddHours(6); // 6 AM
             DateTime endTime = date.Date.AddHours(22);  // 9 PM
-            
+
             // Calculate slot duration based on appointment type
             TimeSpan slotDuration;
             switch (appointmentType.ToLower())
@@ -249,30 +249,32 @@ public class AppointmentsController : ControllerBase
                     // For surgery, return only a single full-day slot if the day is completely free
                     if (!bookedSlots.Any())
                     {
-                        return Ok(new { 
-                            message = "Full day available for surgery", 
+                        return Ok(new
+                        {
+                            message = "Full day available for surgery",
                             availableSlots = new[] { startTime }
                         });
                     }
                     else
                     {
-                        return Ok(new { 
-                            message = "Day already has appointments scheduled", 
+                        return Ok(new
+                        {
+                            message = "Day already has appointments scheduled",
                             availableSlots = new List<DateTime>()
                         });
                     }
                 default:
                     return BadRequest("Invalid appointment type. Valid types are: consultation, check up, surgery");
             }
-            
+
             // Generate all possible slots
             List<DateTime> availableSlots = new List<DateTime>();
             DateTime currentSlot = startTime;
-            
+
             while (currentSlot.Add(slotDuration) <= endTime)
             {
                 bool slotAvailable = true;
-                
+
                 // Check if this slot overlaps with any booked appointment
                 foreach (var (bookedTime, bookedType) in bookedSlots)
                 {
@@ -292,25 +294,26 @@ public class AppointmentsController : ControllerBase
                             bookedDuration = TimeSpan.FromHours(1); // Default
                             break;
                     }
-                    
+
                     // Check for overlap
-                    if (currentSlot < bookedTime.Add(bookedDuration) && 
+                    if (currentSlot < bookedTime.Add(bookedDuration) &&
                         currentSlot.Add(slotDuration) > bookedTime)
                     {
                         slotAvailable = false;
                         break;
                     }
                 }
-                
+
                 if (slotAvailable)
                 {
                     availableSlots.Add(currentSlot);
                 }
-                
+
                 currentSlot = currentSlot.Add(slotDuration);
             }
-            
-            return Ok(new { 
+
+            return Ok(new
+            {
                 doctorId,
                 date = date.ToString("yyyy-MM-dd"),
                 appointmentType,
@@ -322,13 +325,13 @@ public class AppointmentsController : ControllerBase
         {
             return StatusCode(500, "Error retrieving available slots: " + ex.Message);
         }
-}
+    }
 
 
     [HttpPost("add")]
     public async Task<IActionResult> CreateAppointment([FromBody] Appointment appointment)
     {
-        using var conn =  _dbConnection.GetOpenConnection();
+        using var conn = _dbConnection.GetOpenConnection();
 
         try
         {
@@ -339,7 +342,7 @@ public class AppointmentsController : ControllerBase
 
             await using var cmd = new MySqlCommand(query, conn);
             cmd.Parameters.AddWithValue("@PatientID", appointment.PatientID);
-            cmd.Parameters.AddWithValue("@PatientName", appointment.PatientName);
+            cmd.Parameters.AddWithValue("@PatientName", appointment.PatientName.Trim());
             cmd.Parameters.AddWithValue("@AssignedDoctor", appointment.AssignedDoctor.Id);
             cmd.Parameters.AddWithValue("@AppointmentType", appointment.AppointmentType);
             cmd.Parameters.AddWithValue("@Status", appointment.Status);
@@ -542,8 +545,8 @@ public class AppointmentsController : ControllerBase
         }
     }
 
-    [HttpGet("getnumpatientspermonth/{year:int}/{month:int}")]
-    public async Task<IActionResult> GetNumPatientsPerMonth(int year, int month)
+    [HttpGet("getNumAppointments/{year:int}/{month:int}")]
+    public async Task<IActionResult> GetNumAppointments(int year, int month)
     {
         using var conn = _dbConnection.GetOpenConnection();
 
@@ -573,6 +576,76 @@ public class AppointmentsController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, "Error retrieving patient count: " + ex.Message);
+        }
+    }
+
+    [HttpGet("by-doctor-count/{year:int}/{month:int}/{id}")]
+    public async Task<IActionResult> GetAppointmentsCountByDoctor(int year, int month, int id)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+
+        try
+        {
+            string query = @"
+                SELECT MONTH(AppointmentDateTime) AS Month, COUNT(pkId) AS NumAppointments
+                FROM appointments
+                WHERE YEAR(AppointmentDateTime) = @year AND MONTH(AppointmentDateTime) <= @month AND status = 1 AND AssignedDoctor = @doctorId
+                GROUP BY MONTH(AppointmentDateTime);";
+
+            await using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@year", year);
+            cmd.Parameters.AddWithValue("@month", month);
+            cmd.Parameters.AddWithValue("@doctorId", id);
+
+            var result = new int[month];
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                int m = Convert.ToInt32(reader["Month"]);   // e.g., 1 for Jan, 2 for Feb
+                int count = Convert.ToInt32(reader["NumAppointments"]);
+                result[m - 1] = count; // fill result at correct month index
+            }
+            return Ok(result.ToList());
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving appointments: " + ex.Message);
+        }
+    }
+
+    [HttpGet("by-type/{id}")]
+    public async Task<IActionResult> GetAppointmentsByType(int id)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+
+        try
+        {
+            string query = @"
+                SELECT AppointmentType, COUNT(pkId) as TypeCount 
+                FROM appointments
+                WHERE AssignedDoctor = @doctorId AND status = 1
+                GROUP BY AppointmentType;";
+
+            await using var cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@doctorId", id);
+
+            var result = new Dictionary<string, int>();
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                string appointmentType = reader["AppointmentType"].ToString();
+                int count = Convert.ToInt32(reader["TypeCount"]);
+                result[appointmentType] = count;
+            }
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error retrieving appointment types count: " + ex.Message);
         }
     }
 }
