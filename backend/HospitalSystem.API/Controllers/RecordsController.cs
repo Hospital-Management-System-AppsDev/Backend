@@ -35,17 +35,19 @@ public class RecordsController : ControllerBase
                         r.prescription AS prescriptionPath, r.fkPatientId, r.fkAppointmentId, r.fkDoctorId,
                         p.patientId, p.name, p.sex, p.address, p.bloodtype, p.email, p.contactNumber, p.bday,
                         a.pkId, a.PatientID AS AppointmentPatientID, a.PatientName, a.AssignedDoctor, 
-                        a.AppointmentType, a.Status, a.AppointmentDateTime,
+                        a.AppointmentType, a.Status, a.AppointmentDateTime, a.temperature, a.pulseRate, a.weight, a.height, a.sugarLevel, a.bloodPressure, a.chiefComplaint,
                         u.name AS DoctorName, u.email AS DoctorEmail, u.contact_number AS DoctorContactNumber,
                         u.sex AS DoctorSex, u.birthday AS DoctorBirthday, u.username AS DoctorUsername,
-                        d.specialization, d.is_available
+                        d.specialization, d.is_available, d.profile_picture, d.signature,
+                        pm.medical_allergy, pm.latex_allergy, pm.food_allergy, pm.diet, pm.exercise, pm.sleep, pm.smoking, pm.alcohol, pm.current_medications, pm.other_allergy
                     FROM records r
                     JOIN patients p ON r.fkPatientId = p.patientId
                     JOIN appointments a ON r.fkAppointmentId = a.pkId
                     JOIN doctors d ON r.fkDoctorId = d.doctor_id
                     JOIN users u ON d.doctor_id = u.id
+                    JOIN patient_med_info pm ON p.patientId = pm.patientId
                     WHERE r.fkPatientId = @PatientId
-                    ORDER BY a.AppointmentDateTime DESC";
+                    ORDER BY a.AppointmentDateTime DESC;";
                 
                 using (var command = new MySqlCommand(query, connection))
                 {
@@ -70,7 +72,22 @@ public class RecordsController : ControllerBase
                                     BloodType = reader.GetString("bloodtype"),
                                     Email = reader.GetString("email"),
                                     ContactNumber = reader.GetString("contactNumber"),
-                                    Bday = reader.GetDateTime("bday")
+                                    Bday = reader.GetDateTime("bday"),
+                                    ProfilePicture = reader.GetString("profile_picture"),
+                                    PatientMedicalInfo = new PatientMedicalInfo
+                                    {
+                                        medicalAllergies = reader.GetString("medical_allergy"),
+                                        latexAllergy = reader.GetBoolean("latex_allergy"),
+                                        foodAllergy = reader.GetString("food_allergy"),
+                                        diet = reader.GetString("diet"),
+                                        exercise = reader.GetString("exercise"),
+                                        sleep = reader.GetString("sleep"),
+                                        smoking = reader.GetString("smoking"),
+                                        alcohol = reader.GetString("alcohol"),
+                                        currentMedication = reader.GetString("current_medications"),
+                                        otherAllergies = reader.GetString("other_allergy")
+                                    }
+
                                 },
                                 appointment = new Appointment
                                 {
@@ -80,6 +97,13 @@ public class RecordsController : ControllerBase
                                     AppointmentType = reader.GetString("AppointmentType"),
                                     Status = reader.GetInt32("Status"),
                                     AppointmentDateTime = reader.GetDateTime("AppointmentDateTime"),
+                                    temperature = reader.GetDecimal("temperature"),
+                                    pulseRate = reader.GetInt32("pulseRate"),
+                                    weight = reader.GetDecimal("weight"),
+                                    height = reader.GetDecimal("height"),
+                                    sugarLevel = reader.GetDecimal("sugarLevel"),
+                                    bloodPressure = reader.GetString("bloodPressure"),
+                                    chiefComplaint = reader.GetString("chiefComplaint"),
                                     AssignedDoctor = new Doctor
                                     {
                                         Id = reader.GetInt32("AssignedDoctor"),
@@ -90,7 +114,22 @@ public class RecordsController : ControllerBase
                                         Username = reader.GetString("DoctorUsername"),
                                         ContactNumber = reader.GetString("DoctorContactNumber"),
                                         Sex = reader.GetString("DoctorSex"),
-                                        Birthday = reader.GetDateTime("DoctorBirthday")
+                                        Birthday = reader.GetDateTime("DoctorBirthday"),
+                                        profile_picture = reader.GetString("profile_picture"),
+                                        signature = reader.GetString("signature")
+                                    },
+                                    patientMedicalInfo = new PatientMedicalInfo
+                                    {
+                                        medicalAllergies = reader.GetString("medical_allergy"),
+                                        latexAllergy = reader.GetBoolean("latex_allergy"),
+                                        foodAllergy = reader.GetString("food_allergy"),
+                                        diet = reader.GetString("diet"),
+                                        exercise = reader.GetString("exercise"),
+                                        sleep = reader.GetString("sleep"),
+                                        smoking = reader.GetString("smoking"),
+                                        alcohol = reader.GetString("alcohol"),
+                                        currentMedication = reader.GetString("current_medications"),
+                                        otherAllergies = reader.GetString("other_allergy")
                                     }
                                 }
                             };
@@ -139,7 +178,7 @@ public class RecordsController : ControllerBase
             if (rowsAffected > 0)
             {
                 await _hubContext.Clients.All.SendAsync("RecordAdded", record);
-                return Ok(new { message = "Appointment created successfully." });
+                return Ok(new { message = "Record created successfully." });
             }
 
             return StatusCode(500, "Failed to create record.");
@@ -148,5 +187,4 @@ public class RecordsController : ControllerBase
             return StatusCode(500, "Error creating record: " + ex.Message);
         }
     }
-
 }

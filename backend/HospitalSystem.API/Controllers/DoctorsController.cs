@@ -28,7 +28,7 @@ public class DoctorsController : ControllerBase
 
         try
         {
-            string query = "SELECT users.id, users.name, users.email, users.username, users.password, users.sex, users.contact_number, users.birthday, doctors.specialization, doctors.is_available FROM users JOIN doctors ON users.id = doctors.doctor_id WHERE users.role = 'doctor';";
+            string query = "SELECT users.id, users.name, users.email, users.username, users.password, users.sex, users.contact_number, users.birthday, doctors.specialization, doctors.is_available, doctors.profile_picture, doctors.signature FROM users JOIN doctors ON users.id = doctors.doctor_id WHERE users.role = 'doctor';";
             using var cmd = new MySqlCommand(query, conn);
             using var reader = cmd.ExecuteReader();
 
@@ -46,6 +46,8 @@ public class DoctorsController : ControllerBase
                     Birthday = reader.GetDateTime(7),
                     specialization = reader.GetString(8),
                     is_available = reader.GetInt16(9),
+                    profile_picture = reader.GetString(10),
+                    signature = reader.GetString(11)
                 });
             }
             return Ok(doctors);
@@ -53,6 +55,95 @@ public class DoctorsController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, "Error retrieving doctors: " + ex.Message);
+        }
+    }
+
+    [HttpDelete("delete/{id}")]
+    public async Task<IActionResult> DeleteDoctor(int id)
+    {
+        using var conn = _dbConnection.GetOpenConnection();
+        try
+        {
+            string deleteQuery = @"DELETE FROM users WHERE id = @id";
+            using var cmd = new MySqlCommand(deleteQuery, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            
+            int rowsAffected = cmd.ExecuteNonQuery();
+            if (rowsAffected > 0)
+            {
+                await _hubContext.Clients.All.SendAsync("DoctorDeleted", id);
+                return Ok(new { Message = "Doctor deleted successfully!" });
+            }
+            return NotFound($"Doctor with ID {id} not found.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error deleting doctor: " + ex.Message);
+        }
+    }
+
+    [HttpPut("update/{id}")]
+    public async Task<IActionResult> UpdateDoctor(int id, [FromBody] Doctor doctor)
+    {
+        // Since you confirmed IDs match, we can proceed
+        using var conn = _dbConnection.GetOpenConnection();
+        try
+        {
+            // First, update the user in the database
+            string updateQuery = @"UPDATE users SET 
+                                email = @email, 
+                                contact_number = @contact_number, 
+                                birthday = @birthday 
+                                WHERE id = @id";
+            
+            using var cmd = new MySqlCommand(updateQuery, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@email", doctor.Email);
+            cmd.Parameters.AddWithValue("@contact_number", doctor.ContactNumber);
+            cmd.Parameters.AddWithValue("@birthday", doctor.Birthday);
+            
+            int rowsAffected = cmd.ExecuteNonQuery();
+            if (rowsAffected > 0)
+            {
+                // Notify clients about the update
+                await _hubContext.Clients.All.SendAsync("DoctorUpdated", doctor);
+                
+                // Get the updated doctor from database to return
+                string selectQuery = "SELECT * FROM users WHERE id = @id";
+                using var selectCmd = new MySqlCommand(selectQuery, conn);
+                selectCmd.Parameters.AddWithValue("@id", id);
+                
+                using var reader = selectCmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    // Map database fields to Doctor object
+                    var updatedDoctor = new Doctor
+                    {
+                        Id = id,
+                        Email = reader["email"].ToString(),
+                        ContactNumber = reader["contact_number"].ToString(),
+                        Birthday = Convert.ToDateTime(reader["birthday"]),
+                        Name = doctor.Name,
+                        Username = doctor.Username,
+                        Password = doctor.Password,
+                        Sex = doctor.Sex,
+                        specialization = doctor.specialization,
+                        is_available = doctor.is_available,
+                        profile_picture = doctor.profile_picture,
+                        signature = doctor.signature
+                    };
+                    
+                    return Ok(updatedDoctor);
+                }
+                
+                return Ok(doctor); // Fallback to returning the input doctor
+            }
+            
+            return NotFound($"Doctor with ID {id} not found.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "Error updating doctor: " + ex.Message);
         }
     }
 
@@ -66,7 +157,7 @@ public class DoctorsController : ControllerBase
             string query = @"
                 SELECT users.id, users.name, users.email, users.username, users.password, 
                     users.sex, users.contact_number, users.birthday, doctors.specialization, 
-                    doctors.is_available 
+                    doctors.is_available, doctors.profile_picture, doctors.signature
                 FROM users 
                 JOIN doctors ON users.id = doctors.doctor_id 
                 WHERE users.role = 'doctor' AND users.id = @id;"; // Added WHERE users.id = @id
@@ -89,7 +180,9 @@ public class DoctorsController : ControllerBase
                     ContactNumber = reader.GetString(6),
                     Birthday = reader.GetDateTime(7),
                     specialization = reader.GetString(8),
-                    is_available = reader.GetInt16(9)
+                    is_available = reader.GetInt16(9),
+                    profile_picture = reader.GetString(10),
+                    signature = reader.GetString(11)
                 };
 
                 return Ok(doctor);
@@ -239,12 +332,14 @@ public class DoctorsController : ControllerBase
             int doctorId = (int)cmdUser.LastInsertedId;
 
             // ✅ Insert into `doctor_availability` table
-            string insertAvailabilityQuery = @"INSERT INTO doctors (doctor_id, specialization, is_available) 
-                                               VALUES(@doctorId, @specialization, 1)";
+            string insertAvailabilityQuery = @"INSERT INTO doctors (doctor_id, specialization, is_available, profile_picture, signature) 
+                                               VALUES(@doctorId, @specialization, 1, @profile_picture, @signature)";
 
             using var cmdAvailability = new MySqlCommand(insertAvailabilityQuery, conn, transaction);
             cmdAvailability.Parameters.AddWithValue("@doctorId", doctorId);
             cmdAvailability.Parameters.AddWithValue("@specialization", doctor.specialization);
+            cmdAvailability.Parameters.AddWithValue("@profile_picture", doctor.profile_picture);
+            cmdAvailability.Parameters.AddWithValue("@signature", doctor.signature);
 
             int resAvailability = cmdAvailability.ExecuteNonQuery();
             if (resAvailability <= 0)
@@ -266,7 +361,9 @@ public class DoctorsController : ControllerBase
                 doctor.ContactNumber,
                 doctor.Sex,
                 doctor.specialization,
-                is_available = 1
+                is_available = 1,
+                doctor.profile_picture,
+                doctor.signature
             };
 
             // ✅ Notify clients via SignalR

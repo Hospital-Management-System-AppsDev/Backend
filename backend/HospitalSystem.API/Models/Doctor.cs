@@ -6,5 +6,7 @@ namespace HospitalApp.Models
 
         public string specialization{get; set;}
         public int is_available{get; set;}
+        public string profile_picture{get; set;}
+        public string signature{get; set;}
     }
 }

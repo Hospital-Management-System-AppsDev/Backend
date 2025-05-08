@@ -15,6 +15,16 @@ public class HospitalHub : Hub
         await Clients.All.SendAsync("DoctorAdded", doctor);
     }
 
+    public async Task DeleteDoctor(int id)
+    {
+        await Clients.All.SendAsync("DoctorDeleted", id);
+    }
+
+    public async Task UpdateDoctor(Doctor doctor)
+    {
+        await Clients.All.SendAsync("DoctorUpdated", doctor);
+    }
+
     // Appointment methods
     public async Task UpdateAppointment(int appointmentId, Appointment appointment)
     {
@@ -54,5 +64,15 @@ public class HospitalHub : Hub
     public async Task DeleteMedicine(int id)
     {
         await Clients.All.SendAsync("MedicineDeleted", id);
+    }
+
+    public async Task UpdatePatient(Patients patient)
+    {
+        await Clients.All.SendAsync("PatientUpdated", patient);
+    }
+
+    public async Task DeletePatient(int id)
+    {
+        await Clients.All.SendAsync("PatientDeleted", id);
     }
 }
